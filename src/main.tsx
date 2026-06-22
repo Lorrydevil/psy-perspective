@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
-import { BrowserRouter } from './lib/react-router-dom'
 import { readMainapHandoffSession } from './lib/mainapHandoff'
 import './styles.css'
 
