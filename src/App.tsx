@@ -79,6 +79,13 @@ const CANVAS_WIDTH = 880;
 const CANVAS_HEIGHT = 500;
 const TARGET_IMAGE_LIMIT_BYTES = 2 * 1024 * 1024;
 
+type AppProps = {
+  embedded?: boolean;
+  embeddedActorName?: string;
+  embeddedUserEmail?: string;
+  embeddedUserRole?: "admin" | "member";
+};
+
 const users: User[] = [
   {
     id: "creator-mara",
@@ -394,6 +401,15 @@ function toISOStringOrFallback(value: string, fallback: string) {
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+function formatFallbackName(email: string) {
+  const localPart = email.split("@")[0] || "PsyPerspective User";
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 }
 
 function mergeOfflineAccounts(accounts: User[]) {
@@ -1013,6 +1029,28 @@ function createBackendFallbackState() {
   });
 }
 
+function createEmbeddedAccount({
+  email,
+  name,
+  role
+}: {
+  email: string;
+  name?: string;
+  role?: "admin" | "member";
+}): User {
+  const normalizedEmail = normalizeEmail(email);
+
+  return {
+    id: `mainap-${normalizedEmail.replace(/[^a-z0-9]+/g, "-")}`,
+    name: name?.trim() || formatFallbackName(normalizedEmail),
+    email: normalizedEmail,
+    password: "",
+    role: role === "admin" ? "admin" : "viewer",
+    source: "registered",
+    createdAt: new Date().toISOString()
+  };
+}
+
 function createLegacyMigrationSnapshot() {
   const legacyState = loadLegacyPersistedState();
 
@@ -1067,7 +1105,12 @@ function normalizeBootstrapPayload(
   });
 }
 
-function App() {
+function App({
+  embedded = false,
+  embeddedActorName,
+  embeddedUserEmail,
+  embeddedUserRole
+}: AppProps = {}) {
   const [initialPersistedState] = useState<PersistedState>(() => createBackendFallbackState());
   const [appState, setAppState] = useState<AppState>(() => initialPersistedState.appState);
   const [authState, setAuthState] = useState<AuthState>(() => initialPersistedState.authState);
@@ -1118,6 +1161,18 @@ function App() {
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const isEmbedded = embedded && hasText(embeddedUserEmail);
+  const embeddedAccount = useMemo(
+    () =>
+      isEmbedded && embeddedUserEmail
+        ? createEmbeddedAccount({
+            email: embeddedUserEmail,
+            name: embeddedActorName,
+            role: embeddedUserRole
+          })
+        : null,
+    [embeddedActorName, embeddedUserEmail, embeddedUserRole, isEmbedded]
+  );
 
   const activeUser = authState.accounts.find((user) => user.id === authState.activeUserId) ?? null;
   const currentPath = isAppPath(location.pathname) ? location.pathname : "/";
@@ -1168,6 +1223,14 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (isEmbedded) {
+      setDatabaseHydrated(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const sessionTokenAtStart = getSessionToken();
 
     async function hydratePersistedState() {
@@ -1225,7 +1288,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [initialPersistedState]);
+  }, [initialPersistedState, isEmbedded]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1253,6 +1316,10 @@ function App() {
   }, [authState.accounts]);
 
   useEffect(() => {
+    if (isEmbedded && !getSessionToken()) {
+      return;
+    }
+
     let cancelled = false;
 
     async function syncRemoteSocialState() {
@@ -1295,7 +1362,7 @@ function App() {
       window.removeEventListener("focus", syncRemoteSocialState);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [authState.accounts]);
+  }, [authState.accounts, isEmbedded]);
 
   useEffect(() => {
     setAccountSettings((current) => normalizeAccountSettingsMap(current, authState.accounts));
@@ -1514,6 +1581,44 @@ function App() {
       socialState
     });
   }
+
+  function buildEmbeddedBootstrap(activeAccount: User) {
+    const mergedAccounts = normalizeStoredAccounts([...authState.accounts, activeAccount]);
+
+    return createPersistedState({
+      appState: {
+        ...appState,
+        activeUserId: activeAccount.id
+      },
+      authState: createAuthState(mergedAccounts, activeAccount.id),
+      accountSettings: {
+        ...accountSettings,
+        [activeAccount.id]: accountSettings[activeAccount.id] ?? createDefaultAccountSettings(activeAccount)
+      },
+      messages,
+      createDrafts,
+      socialState
+    });
+  }
+
+  useEffect(() => {
+    if (!embeddedAccount) {
+      return;
+    }
+
+    const bootstrap = buildEmbeddedBootstrap(embeddedAccount);
+    applyBootstrapState(bootstrap);
+    setFeedback(
+      embeddedAccount.role === "admin"
+        ? "Admin Console ready through the shared MainAP session."
+        : "Prediction Pad ready through the shared MainAP session."
+    );
+    setAuthFeedback(`Connected through MainAP as ${embeddedAccount.name}.`);
+
+    if (!isAppPath(location.pathname)) {
+      navigate("/", { replace: true });
+    }
+  }, [embeddedAccount, location.pathname, navigate]);
 
   useEffect(() => {
     writeStorageJSON(
@@ -2567,6 +2672,13 @@ function App() {
   }
 
   async function handleLogout() {
+    if (embeddedAccount) {
+      applyBootstrapState(buildEmbeddedBootstrap(embeddedAccount));
+      setAuthFeedback(`Connected through MainAP as ${embeddedAccount.name}.`);
+      navigate("/", { replace: true });
+      return;
+    }
+
     try {
       await logout();
     } catch (error) {
