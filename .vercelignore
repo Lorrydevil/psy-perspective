@@ -1,0 +1,23 @@
+/*
+!index.html
+!vite.config.ts
+!tsconfig.json
+!vite-env.d.ts
+!package.json
+!package-lock.json
+!src/
+!public/
+!dist/
+
+# Ignore everything else
+crew/
+outputs/
+data/
+config/
+utils/
+__pycache__/
+*.py
+*.pyc
+requirements.txt
+*.env
+data.db
