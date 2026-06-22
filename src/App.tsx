@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent
 } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import "../styles.css";
 import PsySidebar from "./components/PsySidebar";
 import {
   addSocialComment as addSocialCommentRequest,

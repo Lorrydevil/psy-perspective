@@ -1,1 +1,1 @@
-/* Local stylesheet kept valid to avoid broken PostCSS imports during builds. */
+@import "../styles.css";
