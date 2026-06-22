@@ -2,7 +2,7 @@ import { Component, StrictMode, type PropsWithChildren, type ReactNode } from "r
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import "../styles.css";
+import "./styles.css";
 
 type AppErrorBoundaryState = {
   hasError: boolean;
